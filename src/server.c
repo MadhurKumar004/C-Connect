@@ -1,7 +1,4 @@
-#define _POSIX_C_SOURCE 200112L 
-#include "utils.h"
-#include <ifaddrs.h>
-#include <netdb.h>
+ #include "utils.h"
 
 #define PORT 8080
 
@@ -66,29 +63,32 @@ void *handle_client(void *arg){
 }
 
 void print_server_ip() {
-    char host[256];
-    struct ifaddrs *ifaddr, *ifa;
-    
-    if (getifaddrs(&ifaddr) == -1) {
-        perror("getifaddrs");
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock == -1) return;
+
+    // Using Google's DNS server as a dummy destination
+    struct sockaddr_in dummy_addr;
+    memset(&dummy_addr, 0, sizeof(dummy_addr));
+    dummy_addr.sin_family = AF_INET;
+    dummy_addr.sin_addr.s_addr = inet_addr("8.8.8.8");
+    dummy_addr.sin_port = htons(53);
+
+    // Try to connect (won't actually send anything)
+    if (connect(sock, (struct sockaddr*)&dummy_addr, sizeof(dummy_addr)) == -1) {
+        close(sock);
         return;
     }
 
-    printf("Server IP addresses:\n");
-    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-        if (ifa->ifa_addr == NULL || ifa->ifa_addr->sa_family != AF_INET)
-            continue;
-
-        getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in),
-                   host, sizeof(host),
-                   NULL, 0, NI_NUMERICHOST);
-                   
-        if (strcmp(ifa->ifa_name, "lo") != 0) {  // Skip localhost
-            printf("%s: %s\n", ifa->ifa_name, host);
-        }
+    // Get local address information
+    struct sockaddr_in local_addr;
+    socklen_t addr_len = sizeof(local_addr);
+    if (getsockname(sock, (struct sockaddr*)&local_addr, &addr_len) == -1) {
+        close(sock);
+        return;
     }
-    
-    freeifaddrs(ifaddr);
+
+    printf("Server IP address: %s\n", inet_ntoa(local_addr.sin_addr));
+    close(sock);
 }
 
 int main(){
