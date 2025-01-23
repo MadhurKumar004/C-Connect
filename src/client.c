@@ -3,6 +3,13 @@
 
 #define PORT 8080
 
+volatile int running = 1;  // Global flag for thread control
+
+void handle_signal(int sig) {
+    (void)sig;
+    running = 0;
+}
+
 void register_user(Client *client) {
     const char *colors[] = {RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN};
     int num_colors = sizeof(colors) / sizeof(colors[0]);
@@ -27,14 +34,14 @@ void *receive_messages(void *arg) {
     int socket = *(int *)arg;
     Message msg;
     
-    while (1) {
+    while (running) {
         int read_len = recv(socket, &msg, sizeof(Message), 0);
         if (read_len <= 0) {
             printf("\nDisconnected from server\n");
-            exit(1);  // Force exit on disconnection
+            running = 0;
+            break;
         }
         
-        // Clear current line and print message
         printf("\r%s: %s\n> ", msg.sender, msg.content);
         fflush(stdout);
     }
@@ -42,6 +49,8 @@ void *receive_messages(void *arg) {
 }
 
 int main(int argc, char *argv[]) {
+    signal(SIGINT, handle_signal);  // Handle Ctrl+C
+
     if (argc != 2) {
         printf("Usage: %s <server_ip>\n", argv[0]);
         return -1;
@@ -85,11 +94,11 @@ int main(int argc, char *argv[]) {
 
     // Main message loop
     char buffer[BUFFER_SIZE];
-    while (1) {
+    while (running) {
         printf("> ");
         fflush(stdout);
         
-        if (!fgets(buffer, BUFFER_SIZE, stdin)) {
+        if (!fgets(buffer, BUFFER_SIZE, stdin) || !running) {
             break;
         }
         buffer[strcspn(buffer, "\n")] = 0;
@@ -109,7 +118,7 @@ int main(int argc, char *argv[]) {
 
     // Cleanup
     close(client_socket);
-    pthread_cancel(recv_thread);
-    pthread_join(recv_thread, NULL);
+    running = 0;
+    sleep(1);  // Give receive thread time to exit
     return 0;
 }

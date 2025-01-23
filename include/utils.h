@@ -11,7 +11,7 @@
 #include <netinet/in.h>
 #include <netdb.h>      
 #include <time.h>
-
+#include <signal.h>
 
 #define MAX_CLIENTS 100
 #define BUFFER_SIZE 2048

@@ -25,6 +25,33 @@ gcc -pthread -Wall -Wextra -Iinclude -o client src/client.c
 ./client 127.0.0.1
 ```
 
+## Network Connection Guide
+
+To connect from another device (phone, another computer) on the same network:
+
+1. Start the server and note the IP address displayed
+2. On the client device, use that IP address:
+```bash
+./client <server_ip>
+```
+
+Common Issues:
+1. Connection Refused? Check:
+   - Server is running
+   - Using correct IP address
+   - No firewall blocking port 8080
+   - Both devices are on the same network
+
+Pro Tip: If 127.0.0.1 works but network IP doesn't, your firewall might be blocking connections. Try:
+```bash
+sudo ufw allow 8080    # Ubuntu/Debian
+```
+or
+```bash
+sudo firewall-cmd --add-port=8080/tcp --permanent    # Fedora/RHEL
+sudo firewall-cmd --reload
+```
+
 ## 🏠 Home Sweet Home (Network)
 
 WARNING: This chat app is like a shy introvert - it only works on your local network! 
@@ -47,4 +74,4 @@ Remember: What happens in 127.0.0.1, stays in 127.0.0.1
 - That's it! We keep things simple here!
 
 ## Contributing
-Feel free to contribute! Just remember: this app is like a cat - it prefers to stay at home. 
+Feel free to contribute! Just remember: this app is like a cat - it prefers to stay at home.
