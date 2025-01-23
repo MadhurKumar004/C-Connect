@@ -7,31 +7,45 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/socket.h>
-#include <sys/select.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <errno.h>
+#include <time.h>
+
 
 #define MAX_CLIENTS 100
 #define BUFFER_SIZE 2048
 #define NAME_LEN 32
 
-typedef enum {
-    MSG_JOIN,
-    MSG_LEAVE,
-    MSG_PUBLIC,
-    MSG_PRIVATE
-} MessageType;
+#define RED     "\x1B[31m"
+#define GREEN   "\x1B[32m"
+#define YELLOW  "\x1B[33m"
+#define BLUE    "\x1B[34m"
+#define MAGENTA "\x1B[35m"
+#define CYAN    "\x1B[36m"
+#define RESET   "\x1B[0m"
 
+// Message types
+typedef enum{
+    CONNECT,
+    DISCONNECT,
+    PUBLIC_MESSAGE,
+    PRIVATE_MESSAGE,
+    GROUP_MESSAGE,
+}MessageType;
+
+// Message structure
 typedef struct {
     MessageType type;
     char sender[NAME_LEN];
+    char receiver[NAME_LEN];
     char content[BUFFER_SIZE];
 } Message;
 
+// Client structure
 typedef struct {
     int socket;
     char name[NAME_LEN];
+    char color[10];
 } Client;
 
 #endif
