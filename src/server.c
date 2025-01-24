@@ -58,17 +58,18 @@ void handle_client_message(int sd) {
                 }
                 for (int i = 0; i < client_count; i++) {
                     if (strcmp(clients[i].name, msg.receiver) == 0) {
-                        // Send to receiver with private message prefix
+                        // Calculate the maximum length of the message content
+                        int max_content_length = BUFFER_SIZE - strlen("(Whisper from )") - strlen(msg.sender) - 3;
                         char temp[BUFFER_SIZE];
-                        snprintf(temp, BUFFER_SIZE, "(Whisper from %s): %.2000s", 
-                                msg.sender, msg.content);
+                        snprintf(temp, BUFFER_SIZE, "(Whisper from %s): %.*s", 
+                                msg.sender, max_content_length, msg.content);
                         strncpy(msg.content, temp, BUFFER_SIZE-1);
                         msg.content[BUFFER_SIZE-1] = '\0';
                         send(clients[i].socket, &msg, sizeof(Message), 0);
                         
                         // Send confirmation to sender without prefixing again
-                        snprintf(temp, BUFFER_SIZE, "(Whisper to %s): %s", 
-                                msg.receiver, msg.content + strlen("(Whisper from ") + strlen(msg.sender) + 3);
+                        snprintf(temp, BUFFER_SIZE, "(Whisper to %s): %.*s", 
+                                msg.receiver, max_content_length, msg.content + strlen("(Whisper from ") + strlen(msg.sender) + 3);
                         strncpy(msg.content, temp, BUFFER_SIZE-1);
                         msg.content[BUFFER_SIZE-1] = '\0';
                         send(sd, &msg, sizeof(Message), 0);
