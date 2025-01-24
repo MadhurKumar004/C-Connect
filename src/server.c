@@ -60,15 +60,15 @@ void handle_client_message(int sd) {
                     if (strcmp(clients[i].name, msg.receiver) == 0) {
                         // Send to receiver with private message prefix
                         char temp[BUFFER_SIZE];
-                        snprintf(temp, BUFFER_SIZE, "(PM from %s): %.2000s", 
+                        snprintf(temp, BUFFER_SIZE, "(Whisper from %s): %.2000s", 
                                 msg.sender, msg.content);
                         strncpy(msg.content, temp, BUFFER_SIZE-1);
                         msg.content[BUFFER_SIZE-1] = '\0';
                         send(clients[i].socket, &msg, sizeof(Message), 0);
                         
                         // Send confirmation to sender without prefixing again
-                        snprintf(temp, BUFFER_SIZE, "(PM to %s): %s", 
-                                msg.receiver, msg.content + strlen("(PM from ") + strlen(msg.sender) + 3);
+                        snprintf(temp, BUFFER_SIZE, "(Whisper to %s): %s", 
+                                msg.receiver, msg.content + strlen("(Whisper from ") + strlen(msg.sender) + 3);
                         strncpy(msg.content, temp, BUFFER_SIZE-1);
                         msg.content[BUFFER_SIZE-1] = '\0';
                         send(sd, &msg, sizeof(Message), 0);
