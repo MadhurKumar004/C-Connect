@@ -26,13 +26,14 @@
 #define RESET   "\x1B[0m"
 
 // Message types
-typedef enum{
-    CONNECT,
-    DISCONNECT,
+typedef enum {
+    MSG_JOIN,
+    MSG_LEAVE,
     PUBLIC_MESSAGE,
     PRIVATE_MESSAGE,
     GROUP_MESSAGE,
-}MessageType;
+    STATUS_MESSAGE
+} MessageType;
 
 // Message structure
 typedef struct {

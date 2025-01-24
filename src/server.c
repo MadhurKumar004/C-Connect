@@ -1,65 +1,56 @@
- #include "utils.h"
+#include "utils.h"
+#include <sys/select.h>
+#include <errno.h>
 
 #define PORT 8080
 
 Client clients[MAX_CLIENTS];
-pthread_mutex_t clients_mutex=PTHREAD_MUTEX_INITIALIZER;
-int client_count=0;
+int client_count = 0;
+fd_set master_fds, read_fds;
+int max_fd;
 
-void *handle_client(void *arg){
-    Client *client = (Client *)arg;
-    char buffer[BUFFER_SIZE];
+void broadcast_message(Message *msg, int sender_sd) {
+    for (int i = 0; i < client_count; i++) {
+        if (clients[i].socket != sender_sd) {
+            send(clients[i].socket, msg, sizeof(Message), 0);
+        }
+    }
+}
+
+void handle_client_message(int sd) {
     Message msg;
-
-    snprintf(buffer, BUFFER_SIZE, "%s had joined the chat!", client->name);
-    printf("%s\n",buffer);
-
-    while(1){
-        int read_len=recv(client->socket,&msg,sizeof(Message),0);
-        if(read_len==0){
-            break;
-        }
-
-        pthread_mutex_lock(&clients_mutex);
-        switch(msg.type){
-            case PUBLIC_MESSAGE:
-                for(int i=0;i<client_count;i++){
-                    if(clients[i].socket!=client->socket){
-                        send(clients[i].socket,&msg,sizeof(Message),0);
-                    }
+    int received = recv(sd, &msg, sizeof(Message), 0);
+    
+    if (received <= 0) {
+        char client_name[NAME_LEN] = "Unknown";
+        for (int i = 0; i < client_count; i++) {
+            if (clients[i].socket == sd) {
+                strncpy(client_name, clients[i].name, NAME_LEN-1);
+                
+                // Send disconnect message
+                Message leave_msg;
+                leave_msg.type = MSG_LEAVE;
+                strncpy(leave_msg.sender, "SERVER", NAME_LEN-1);
+                snprintf(leave_msg.content, BUFFER_SIZE, "%s has left the chat", client_name);
+                
+                // Remove client
+                while (i < client_count - 1) {
+                    clients[i] = clients[i + 1];
+                    i++;
                 }
+                client_count--;
+                
+                // Broadcast before closing
+                broadcast_message(&leave_msg, sd);
+                FD_CLR(sd, &master_fds);
+                close(sd);
+                printf("Client %s disconnected\n", client_name);
                 break;
-            
-            case PRIVATE_MESSAGE:
-                for(int i=0;i<client_count;i++){
-                    if(strcmp(clients[i].name,msg.receiver)==0){
-                        send(clients[i].socket,&msg,sizeof(Message),0);
-                        break;
-                    }
-                }
-                break;
-        }
-        pthread_mutex_unlock(&clients_mutex);
-    }
-
-    pthread_mutex_lock(&clients_mutex);
-    for(int i=0;i<client_count;i++){
-        if(clients[i].socket==client->socket){
-            while(i<client_count-1){
-                clients[i]=clients[i+1];
-                i++;
             }
-            client_count--;
-            break;
         }
+    } else if (received == sizeof(Message)) {
+        broadcast_message(&msg, sd);
     }
-    pthread_mutex_unlock(&clients_mutex);
-
-    close(client->socket);
-    snprintf(buffer, BUFFER_SIZE, "%s had left the chat!", client->name);
-    printf("%s\n",buffer);
-
-    return NULL;
 }
 
 void print_server_ip() {
@@ -91,10 +82,10 @@ void print_server_ip() {
     close(sock);
 }
 
-int main(){
+int main() {
     int server_fd;
     struct sockaddr_in address;
-    int opt=1;
+    int opt = 1;
 
     if((server_fd=socket(AF_INET, SOCK_STREAM, 0))==0){
         perror("socket failed");
@@ -119,53 +110,71 @@ int main(){
         perror("listen");
         exit(EXIT_FAILURE);
     }
-    
+
+    FD_ZERO(&master_fds);
+    FD_SET(server_fd, &master_fds);
+    max_fd = server_fd;
+
     printf("Server started on port %d\n", PORT);
     print_server_ip();
     printf("\nUse one of these IP addresses to connect from other devices on the network\n");
 
-    while(1){
-        struct sockaddr_in client_addr;
-        int client_socket;
-        socklen_t addrlen=sizeof(client_addr);
-
-        if((client_socket=accept(server_fd, (struct sockaddr *)&client_addr, &addrlen))<0){
-            perror("accept failed");
+    while (1) {
+        read_fds = master_fds;
+        if (select(max_fd + 1, &read_fds, NULL, NULL, NULL) < 0) {
+            if (errno == EINTR) continue;  // Handle interrupt
+            perror("select failed");
             exit(EXIT_FAILURE);
         }
 
-        pthread_t thread_id;
-        Client *client=&clients[client_count];
-        client->socket=client_socket;
+        for (int fd = 0; fd <= max_fd; fd++) {
+            if (FD_ISSET(fd, &read_fds)) {
+                if (fd == server_fd) {
+                    struct sockaddr_in client_addr;
+                    socklen_t addrlen = sizeof(client_addr);
+                    int client_socket = accept(server_fd, (struct sockaddr *)&client_addr, &addrlen);
+                    
+                    if (client_socket < 0) {
+                        perror("accept failed");
+                        continue;
+                    }
 
-        // Initialize client name
-        char name_buf[NAME_LEN];
-        int name_len = recv(client_socket, name_buf, NAME_LEN-1, 0);
-        if (name_len <= 0) {
-            perror("Failed to receive client name");
-            close(client_socket);
-            continue;
+                    if (client_count >= MAX_CLIENTS) {
+                        printf("Maximum clients reached. Connection rejected.\n");
+                        close(client_socket);
+                        continue;
+                    }
+
+                    FD_SET(client_socket, &master_fds);
+                    if (client_socket > max_fd) {
+                        max_fd = client_socket;
+                    }
+
+                    clients[client_count].socket = client_socket;
+                    char name_buf[NAME_LEN];
+                    int name_len = recv(client_socket, name_buf, NAME_LEN-1, 0);
+                    if (name_len > 0) {
+                        name_buf[name_len] = '\0';
+                        strncpy(clients[client_count].name, name_buf, NAME_LEN-1);
+                        clients[client_count].name[NAME_LEN-1] = '\0';
+                        
+                        Message join_msg;
+                        join_msg.type = MSG_JOIN;
+                        strncpy(join_msg.sender, "SERVER", NAME_LEN-1);
+                        snprintf(join_msg.content, BUFFER_SIZE, "%s has joined the chat", clients[client_count].name);
+                        broadcast_message(&join_msg, client_socket);
+                        
+                        printf("New client: %s\n", clients[client_count].name);
+                        client_count++;
+                    } else {
+                        close(client_socket);
+                        FD_CLR(client_socket, &master_fds);
+                    }
+                } else {
+                    handle_client_message(fd);
+                }
+            }
         }
-        name_buf[name_len] = '\0';
-        strcpy(client->name, name_buf);
-
-        // Create and broadcast join message
-        Message join_msg;
-        join_msg.type = PUBLIC_MESSAGE;
-        strncpy(join_msg.sender, "SERVER", NAME_LEN-1);
-        snprintf(join_msg.content, BUFFER_SIZE, "%s has joined the chat!", client->name);
-        
-        pthread_mutex_lock(&clients_mutex);
-        client_count++;
-        // Broadcast to existing clients
-        for(int i = 0; i < client_count-1; i++) {
-            send(clients[i].socket, &join_msg, sizeof(Message), 0);
-        }
-        pthread_mutex_unlock(&clients_mutex);
-
-        pthread_create(&thread_id, NULL, handle_client, (void *)client);
-        pthread_detach(thread_id);
     }
-    
     return 0;
 }
