@@ -49,7 +49,54 @@ void handle_client_message(int sd) {
             }
         }
     } else if (received == sizeof(Message)) {
-        broadcast_message(&msg, sd);
+        switch(msg.type) {
+            case PRIVATE_MESSAGE:
+                if (strcmp(msg.sender, msg.receiver) == 0) {
+                    strcpy(msg.content, "Error: You cannot send private messages to yourself");
+                    send(sd, &msg, sizeof(Message), 0);
+                    return;
+                }
+                for (int i = 0; i < client_count; i++) {
+                    if (strcmp(clients[i].name, msg.receiver) == 0) {
+                        // Send to receiver with private message prefix
+                        char temp[BUFFER_SIZE];
+                        snprintf(temp, BUFFER_SIZE, "(PM from %s): %.2000s", 
+                                msg.sender, msg.content);
+                        strncpy(msg.content, temp, BUFFER_SIZE-1);
+                        msg.content[BUFFER_SIZE-1] = '\0';
+                        send(clients[i].socket, &msg, sizeof(Message), 0);
+                        
+                        // Send confirmation to sender without prefixing again
+                        snprintf(temp, BUFFER_SIZE, "(PM to %s): %s", 
+                                msg.receiver, msg.content + strlen("(PM from ") + strlen(msg.sender) + 3);
+                        strncpy(msg.content, temp, BUFFER_SIZE-1);
+                        msg.content[BUFFER_SIZE-1] = '\0';
+                        send(sd, &msg, sizeof(Message), 0);
+                        return;
+                    }
+                }
+                // User not found
+                strcpy(msg.content, "Error: User not found");
+                send(sd, &msg, sizeof(Message), 0);
+                break;
+
+            case STATUS_MESSAGE:
+                if (strcmp(msg.content, "-list") == 0) {
+                    char list[BUFFER_SIZE] = "Online users:\n";
+                    for (int i = 0; i < client_count; i++) {
+                        strcat(list, "- ");
+                        strcat(list, clients[i].name);
+                        strcat(list, "\n");
+                    }
+                    strncpy(msg.content, list, BUFFER_SIZE-1);
+                    msg.content[BUFFER_SIZE-1] = '\0';
+                    send(sd, &msg, sizeof(Message), 0);
+                }
+                break;
+
+            default:
+                broadcast_message(&msg, sd);
+        }
     }
 }
 

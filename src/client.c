@@ -23,11 +23,51 @@ void register_user(Client *client) {
 }
 
 void print_help() {
-    printf("Commands:\n");
-    printf("-help: Show this help message\n");
-    printf("-register: Register a new user\n");
-    printf("To send a public message, just type and press enter.\n");
-    printf("To send a private message, use @username: message\n");
+    printf("\n=== Available Commands ===\n");
+    printf("-help      : Show this help message\n");
+    printf("-list      : Show online users\n");
+    printf("-quit      : Exit chat\n");
+    printf("@user msg  : Send private message\n");
+    printf("msg        : Send public message\n\n");
+}
+
+void handle_message(Client *client, char *buffer) {
+    Message msg;
+    msg.type = PUBLIC_MESSAGE;
+    strncpy(msg.sender, client->name, NAME_LEN-1);
+
+    // Handle commands
+    if (buffer[0] == '-') {
+        if (strcmp(buffer, "-help") == 0) {
+            print_help();
+            return;
+        } else if (strcmp(buffer, "-quit") == 0) {
+            running = 0;
+            return;
+        } else if (strcmp(buffer, "-list") == 0) {
+            msg.type = STATUS_MESSAGE;
+            strcpy(msg.content, "-list");
+        }
+    }
+    // Handle private messages
+    else if (buffer[0] == '@') {
+        char *space = strchr(buffer, ' ');
+        if (space) {
+            *space = '\0';
+            msg.type = PRIVATE_MESSAGE;
+            strncpy(msg.receiver, buffer + 1, NAME_LEN-1);
+            strncpy(msg.content, space + 1, BUFFER_SIZE-1);
+        } else {
+            printf("Usage: @username message\n");
+            return;
+        }
+    }
+    // Regular public message
+    else {
+        strncpy(msg.content, buffer, BUFFER_SIZE-1);
+    }
+
+    send(client->socket, &msg, sizeof(Message), 0);
 }
 
 void *receive_messages(void *arg) {
@@ -102,18 +142,7 @@ int main(int argc, char *argv[]) {
             break;
         }
         buffer[strcspn(buffer, "\n")] = 0;
-
-        Message msg;
-        msg.type = PUBLIC_MESSAGE;
-        strncpy(msg.sender, client.name, NAME_LEN-1);
-        msg.sender[NAME_LEN-1] = '\0';
-        strncpy(msg.content, buffer, BUFFER_SIZE-1);
-        msg.content[BUFFER_SIZE-1] = '\0';
-        
-        if (send(client_socket, &msg, sizeof(Message), 0) < 0) {
-            perror("Send failed");
-            break;
-        }
+        handle_message(&client, buffer);
     }
 
     // Cleanup
